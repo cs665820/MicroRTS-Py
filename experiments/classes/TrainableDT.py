@@ -12,13 +12,22 @@ class TrainableDT(DecisionTransformerModel):
 
         action_preds = output[1]
         action_targets = kwargs["actions"]
+        states = kwargs["states"]
         attention_mask = kwargs["attention_mask"]
         act_dim = action_preds.shape[2]
+        state_dim = states.shape[2]
+
         action_preds = action_preds.reshape(-1,
                                             act_dim)[attention_mask.reshape(-1) > 0]
         action_targets = action_targets.reshape(-1,
                                                 act_dim)[attention_mask.reshape(-1) > 0]
+        states = states.reshape(-1, state_dim)[attention_mask.reshape(-1) > 0]
+
+        action_targets = action_targets.clone()
+        action_targets = action_targets.reshape(-1, 78)  # 78 action encodings
         action_preds = action_preds.reshape(-1, 78)  # 78 action encodings
+        states = states.reshape(-1, 6)  # 6 state encodings
+
         probs = torch.zeros_like(
             action_preds, dtype=torch.float32, device=action_preds.device)
 
@@ -36,8 +45,13 @@ class TrainableDT(DecisionTransformerModel):
             probs[:, start:end] = F.softmax(
                 action_preds[:, start:end], dim=1)
 
+        # only account for loss on spaces that should have units
+        mask = ~(states[:, :-1] == 0).all(dim=1)
+
         # cross entropy loss
-        loss = F.cross_entropy(probs.reshape(-1, act_dim), action_targets)
+        probs = probs[mask, :].reshape(-1, act_dim)
+        action_targets = action_targets[mask, :].reshape(-1, act_dim)
+        loss = F.cross_entropy(probs, action_targets)
 
         return {"loss": loss, "logits": action_preds.reshape(-1, act_dim)}
 

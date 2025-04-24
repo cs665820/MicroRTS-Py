@@ -77,7 +77,7 @@ if __name__ == "__main__":
     training_args = TrainingArguments(
         output_dir=output_dir,
         logging_steps=args.logging_steps,
-        save_steps=50,
+        save_steps=500,
         remove_unused_columns=False,
         num_train_epochs=args.num_train_epochs,
         per_device_train_batch_size=args.per_device_train_batch_size,
