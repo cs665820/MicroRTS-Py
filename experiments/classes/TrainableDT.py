@@ -46,7 +46,7 @@ class TrainableDT(DecisionTransformerModel):
                 action_preds[:, start:end], dim=1)
 
         # only account for loss on spaces that should have units
-        mask = ~(states[:, :-1] == 0).all(dim=1)
+        mask = ~(states[:, 2:3] != 1).all(dim=1)
 
         # cross entropy loss
         probs = probs[mask, :].reshape(-1, act_dim)
