@@ -11,7 +11,7 @@ from distutils.util import strtobool
 import numpy as np
 import torch
 from classes.DataCollector import DecisionTransformerGymDataCollator
-from datasets import DatasetDict
+from datasets import load_dataset 
 from dt_gridnet_eval import decode_action, decode_obs, get_action
 from stable_baselines3.common.vec_env import VecMonitor, VecVideoRecorder
 
@@ -39,8 +39,6 @@ def parse_args():
         help='if toggled, cuda will not be enabled by default')
     parser.add_argument('--capture-video', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=False,
         help='whether to capture videos of the agent performances (check out `videos` folder)')
-    parser.add_argument('--dt-dataset', type=str, default="episode_data/cm-mcrp-dataset-v2/save_0",
-        help='the path to the decision transformer dataset')
 
     # Algorithm specific arguments
     parser.add_argument(
@@ -154,7 +152,7 @@ if __name__ == "__main__":
     all_bots = dt_bots + other_bots
 
     if any(bot["type"] == "dt" for bot in all_bots):
-        dataset = DatasetDict.load_from_disk(args.dt_dataset)
+        dataset = load_dataset("Colinster327/microrts-dt-dataset")
         collector = DecisionTransformerGymDataCollator(dataset["train"])
 
     assert len(all_bots) > 1, "at least 2 agents/ais are required to play a tournament"
