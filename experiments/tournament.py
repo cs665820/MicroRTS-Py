@@ -1,7 +1,10 @@
 # http://proceedings.mlr.press/v97/han19a/han19a.pdf
 
 import argparse
+import importlib
+import os
 import random
+import sys
 import time
 from distutils.util import strtobool
 
@@ -15,10 +18,6 @@ from stable_baselines3.common.vec_env import VecMonitor, VecVideoRecorder
 from experiments.classes.TrainableDT import TrainableDT
 from gym_microrts import microrts_ai  # noqa
 
-import importlib
-
-import sys
-import os
 pwd = os.path.dirname(__file__)
 
 packages_path = os.path.join(pwd, 'packages')
@@ -28,6 +27,7 @@ packages = [f.name for f in os.scandir(packages_path) if f.is_dir()]
 for package in packages:
     package_path = os.path.join(packages_path, package)
     sys.path.append(package_path)
+
 
 def parse_args():
     # fmt: off
@@ -90,7 +90,7 @@ def get_bot_name(bot):
         else:
             return split_path[-1]
     else:
-        raise ValueError(f"Unknown bot type: {bot_type}")
+        raise ValueError(f"Unknown bot type: {bot['type']}")
 
 
 def print_final_results(bots_wins, all_bots):
@@ -108,13 +108,13 @@ def print_final_results(bots_wins, all_bots):
 if __name__ == "__main__":
     args = parse_args()
 
-    from ppo_gridnet import MicroRTSStatsRecorder
+    from old_ppo_gridnet import MicroRTSStatsRecorder
 
     from gym_microrts.envs.vec_env import (MicroRTSBotVecEnv,
                                            MicroRTSGridModeVecEnv)
 
     agents_file = open(args.agents, 'r')
-    
+
     # TRY NOT TO MODIFY: seeding
     device = torch.device(
         "cuda" if torch.cuda.is_available() and args.cuda else "cpu")
@@ -128,9 +128,6 @@ if __name__ == "__main__":
 
     # variables for decision transformer
     TARGET_RETURN = 10
-    if args.dts:
-        dataset = DatasetDict.load_from_disk(args.dt_dataset)
-        collector = DecisionTransformerGymDataCollator(dataset["train"])
 
     all_bots = []
     for line in agents_file:
@@ -151,6 +148,14 @@ if __name__ == "__main__":
             )
         else:
             raise ValueError
+
+    dt_bots = [bot for bot in all_bots if bot["type"] == "dt"]
+    other_bots = [bot for bot in all_bots if bot["type"] != "dt"]
+    all_bots = dt_bots + other_bots
+
+    if any(bot["type"] == "dt" for bot in all_bots):
+        dataset = DatasetDict.load_from_disk(args.dt_dataset)
+        collector = DecisionTransformerGymDataCollator(dataset["train"])
 
     assert len(all_bots) > 1, "at least 2 agents/ais are required to play a tournament"
 
@@ -203,7 +208,7 @@ if __name__ == "__main__":
                     reward_weight=np.array([10.0, 1.0, 1.0, 0.2, 1.0, 4.0]),
                     autobuild=False
                 )
-    
+
             envs = MicroRTSStatsRecorder(envs)
             envs = VecMonitor(envs)
             next_obs = torch.Tensor(envs.reset()).to(device)
@@ -231,21 +236,17 @@ if __name__ == "__main__":
                 agent2 = agent2_class(envs).to(device)
                 agent2.load_state_dict(torch.load(os.path.join(models_path, player2["path"]), map_location=device, weights_only=True), strict=False)
                 agent2.eval()
-            
+
             if player1_type == "dt":
-                agent1 = TrainableDT.from_pretrained(player1["path"]).to(device)
+                agent1 = TrainableDT.from_pretrained(os.path.join(models_path, player1["path"])).to(device)
                 agent1.eval()
-            
-            if player2_type == "dt":
-                agent2 = TrainableDT.from_pretrained(player2["path"]).to(device)
-                agent2.eval()
 
             print("\n\n====== Next Match ======")
             print(f"{player1_name} vs. {player2_name}")
 
             for game in range(args.games_per_match):
                 # reset the DT trajectory
-                if player1_type == "dt" or player2_type == "dt":
+                if player1_type == "dt":
                     states = decode_obs(next_obs[0].view(mapsize, -1)).reshape(
                         1, collector.state_dim).to(device=device, dtype=torch.float32)
                     target_return = torch.tensor(
@@ -257,22 +258,24 @@ if __name__ == "__main__":
                         0, device=device, dtype=torch.long).reshape(1, 1)
 
                 for update in range(max_ep_length):
-                    envs.render(mode="human")
+                    envs.render(mode="rgb_array")
                     with torch.no_grad():
                         p1_action = None
                         p2_action = None
-                        invalid_action_masks = torch.tensor(np.array(envs.get_action_mask())).to(device)
+                        if player1_type != "ai" or player2_type != "ai":
+                            invalid_action_masks = torch.tensor(np.array(envs.get_action_mask())).to(device)
 
                         if player1_type == "agent":
-                            p1_obs = next_obs[::2]
-                            p1_action = agent1.get_action(p1_obs, invalid_action_masks[::2])
-                        if player2_type == "agent":
-                            p2_obs = next_obs[1::2]
-                            p2_action = agent2.get_action(p2_obs, invalid_action_masks[1::2])
-                        if player1_type == "dt":
-                            invalid_action_masks = torch.tensor(
-                                np.array(envs.get_action_mask())).to(device)
+                            p1_obs = next_obs[::2] if player2_type != "ai" else next_obs
+                            p1_mask = invalid_action_masks[::2] if player2_type != "ai" else invalid_action_masks
+                            p1_action = agent1.get_action(p1_obs, p1_mask)
 
+                        if player2_type == "agent":
+                            p2_obs = next_obs[1::2] if player1_type != "ai" else next_obs
+                            p2_mask = invalid_action_masks[1::2] if player1_type != "ai" else invalid_action_masks
+                            p2_action = agent2.get_action(p2_obs, p2_mask)
+
+                        if player1_type == "dt":
                             actions = torch.cat([actions, torch.zeros(
                                 (1, collector.act_dim), device=device)], dim=0)
                             rewards = torch.cat(
@@ -290,80 +293,90 @@ if __name__ == "__main__":
                             p1_action = decode_action(
                                 p1_action.view(mapsize, -1)).view(1, mapsize, -1)
 
-                            next_state = torch.Tensor(
-                                decode_obs(next_obs[0].view(mapsize, -1))
-                            ).to(device).reshape(1, collector.state_dim)
-
-                            states = torch.cat([states, next_state], dim=0)
-                            rewards[-1] = rs[0]
-
-                            pred_return = target_return[0, -1] - rs[0]
-                            target_return = torch.cat(
-                                [target_return, pred_return.reshape(1, 1)], dim=1)
-                            timesteps = torch.cat([timesteps, torch.ones(
-                                (1, 1), device=device, dtype=torch.long) * (update + 1)], dim=1)
-                        if player2_type == "dt":
-                            invalid_action_masks = torch.tensor(
-                                np.array(envs.get_action_mask())).to(device)
-
-                            actions = torch.cat([actions, torch.zeros(
-                                (1, collector.act_dim), device=device)], dim=0)
-                            rewards = torch.cat(
-                                [rewards, torch.zeros(1, device=device)])
-
-                            p2_action = get_action(
-                                agent2,
-                                (states - collector.state_mean) / collector.state_std,
-                                actions,
-                                target_return,
-                                timesteps,
-                                invalid_action_masks[1]
-                            )
-
-                            p2_action = decode_action(
-                                p2_action.view(mapsize, -1)).view(1, mapsize, -1)
-
-                            next_state = torch.Tensor(
-                                decode_obs(next_obs[1].view(mapsize, -1))
-                            ).to(device).reshape(1, collector.state_dim)
-
-                            states = torch.cat([states, next_state], dim=0)
-                            rewards[-1] = rs[1]
-
-                            pred_return = target_return[0, -1] - rs[1]
-                            target_return = torch.cat(
-                                [target_return, pred_return.reshape(1, 1)], dim=1)
-                            timesteps = torch.cat([timesteps, torch.ones(
-                                (1, 1), device=device, dtype=torch.long) * (update + 1)], dim=1)
-
                         action = torch.zeros(
-                            (envs.num_envs, mapsize, 7)) # 7 action planes
+                            (envs.num_envs, mapsize, 7), device=device) # 7 action planes
 
-                        if p1_action is not None:
+                        if p1_action is not None and p2_action is not None:
                             action[::2] = p1_action
-                        if p2_action is not None:
                             action[1::2] = p2_action
+                        elif p1_action is not None:
+                            action = p1_action
+                        elif p2_action is not None:
+                            action = p2_action
 
                         try:
-                            next_obs, _, ds, infos = envs.step(
-                                action.cpu().numpy().reshape(envs.num_envs, -1))
+                            action = action.cpu().numpy().reshape(envs.num_envs, -1)
+                            if player1_type == "ai" and player2_type == "ai":
+                                action = [
+                                    [
+                                        [0, 0, 0, 0, 0, 0, 0, 0],
+                                        [0, 0, 0, 0, 0, 0, 0, 0],
+                                    ]
+                                ]
+
+                            next_obs, rs, ds, infos = envs.step(action)
                             next_obs = torch.Tensor(next_obs).to(device)
+
+                            if player1_type == "dt":
+                                next_state = torch.Tensor(
+                                    decode_obs(next_obs[0].view(mapsize, -1))
+                                ).to(device).reshape(1, collector.state_dim)
+
+                                states = torch.cat([states, next_state], dim=0)
+                                rewards[-1] = rs[0]
+
+                                pred_return = target_return[0, -1] - rs[0]
+                                target_return = torch.cat(
+                                    [target_return, pred_return.reshape(1, 1)], dim=1)
+                                timesteps = torch.cat([timesteps, torch.ones(
+                                    (1, 1), device=device, dtype=torch.long) * (update + 1)], dim=1)
+
                         except Exception as e:
                             e.printStackTrace()
                             raise
 
-                    
-                    if "episode" in infos[0].keys():
-                        # game finished
-                        score = int(infos[0]["microrts_stats"]["WinLossRewardFunction"])
-                        if score > 0: # player1 wins
-                            bots_wins[i][j] += 1
-                            print(f"Game {game + 1}: {player1_name} wins!")
-                        elif score < 0: # player2 wins
-                            bots_wins[j][i] += 1
-                            print(f"Game {game + 1}: {player2_name} wins!")
-                        else: # draw
-                            print(f"Game {game + 1}: it's a draw!")
+                        for idx, info in enumerate(infos):
+                            if "episode" in info.keys():
+                                score = int(info["microrts_stats"]["WinLossRewardFunction"])
+
+                                if player1_type in ["agent", "dt"] and player2_type in ["agent", "dt"]:
+                                    if idx % 2 == 0:
+                                        if score > 0:
+                                            bots_wins[i][j] += 1
+                                            print(f"Game {game + 1}: {player1_name} wins!")
+                                        elif score == 0:
+                                            print(f"Game {game + 1}: it's a draw!")
+                                    elif score > 0:
+                                        bots_wins[j][i] += 1
+                                        print(f"Game {game + 1}: {player2_name} wins!")
+
+                                elif player1_type in ["agent", "dt"] and player2_type == "ai":
+                                    if score > 0:
+                                        bots_wins[i][j] += 1
+                                        print(f"Game {game + 1}: {player1_name} wins!")
+                                    elif score < 0:
+                                        bots_wins[j][i] += 1
+                                        print(f"Game {game + 1}: {player2_name} wins!")
+                                    else:
+                                        print(f"Game {game + 1}: it's a draw!")
+                                elif player2_type in ["agent", "dt"] and player1_type == "ai":
+                                    if score > 0:
+                                        bots_wins[j][i] += 1
+                                        print(f"Game {game + 1}: {player2_name} wins!")
+                                    elif score < 0:
+                                        bots_wins[i][j] += 1
+                                        print(f"Game {game + 1}: {player1_name} wins!")
+                                    else:
+                                        print(f"Game {game + 1}: it's a draw!")
+                                elif player1_type == "ai" and player2_type == "ai":
+                                    if score > 0:
+                                        bots_wins[i][j] += 1
+                                        print(f"Game {game + 1}: {player1_name} wins!")
+                                    elif score < 0:
+                                        bots_wins[j][i] += 1
+                                        print(f"Game {game + 1}: {player2_name} wins!")
+                                    else:
+                                        print(f"Game {game + 1}: it's a draw!")
 
                     # game exit condition
                     if ds[0]:
