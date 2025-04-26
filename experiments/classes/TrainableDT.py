@@ -45,12 +45,14 @@ class TrainableDT(DecisionTransformerModel):
             probs[:, start:end] = F.softmax(
                 action_preds[:, start:end], dim=1)
 
-        # only account for loss on spaces that should have units
-        mask = ~(states[:, 2:3] != 1).all(dim=1)
+        # only account for loss on spaces that the model should own
+        mask = states[:, 2] != 1
 
         # cross entropy loss
-        probs = probs[mask, :].reshape(-1, act_dim)
-        action_targets = action_targets[mask, :].reshape(-1, act_dim)
+        probs[mask, :] = 0
+        probs = probs.reshape(-1, act_dim)
+        action_targets[mask, :] = 0
+        action_targets = action_targets.reshape(-1, act_dim)
         loss = F.cross_entropy(probs, action_targets)
 
         return {"loss": loss, "logits": action_preds.reshape(-1, act_dim)}
