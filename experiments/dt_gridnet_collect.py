@@ -110,6 +110,7 @@ def save_dataset(episodes, save_path, save_num):
         "actions": [episode["actions"] for episode in episodes],
         "rewards": [episode["rewards"] for episode in episodes],
         "dones": [episode["dones"] for episode in episodes],
+        "masks": [episode["masks"] for episode in episodes]
     }
     new_dataset = Dataset.from_dict(data_dict)
 
@@ -130,7 +131,7 @@ def save_dataset(episodes, save_path, save_num):
 if __name__ == "__main__":
     args = parse_args()
 
-    from ppo_gridnet import Agent, MicroRTSStatsRecorder
+    from old_ppo_gridnet import Agent, MicroRTSStatsRecorder
 
     from gym_microrts.envs.vec_env import MicroRTSGridModeVecEnv
 
@@ -181,12 +182,17 @@ if __name__ == "__main__":
             "actions": [],
             "rewards": [],
             "dones": [],
+            "masks": []
         }
 
         for step in range(max_ep_len):
             with torch.no_grad():
                 invalid_action_masks = torch.tensor(
                     np.array(envs.get_action_mask())).to(device)
+
+                episode_data["masks"].append(
+                    invalid_action_masks.flatten()
+                )
 
                 episode_data["observations"].append(
                     decode_obs(next_obs.view(mapsize, -1))

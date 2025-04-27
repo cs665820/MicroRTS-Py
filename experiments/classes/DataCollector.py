@@ -51,7 +51,7 @@ class DecisionTransformerGymDataCollator:
             p=self.p_sample,  # reweights so we sample according to timesteps
         )
         # a batch of dataset features
-        s, a, r, d, rtg, timesteps, mask = [], [], [], [], [], [], []
+        s, a, m, r, d, rtg, timesteps, mask = [], [], [], [], [], [], [], []
 
         for ind in batch_inds:
             # for feature in features:
@@ -63,6 +63,8 @@ class DecisionTransformerGymDataCollator:
                 feature["observations"][si: si + self.max_len]).reshape(1, -1, self.state_dim))
             a.append(np.array(
                 feature["actions"][si: si + self.max_len]).reshape(1, -1, self.act_dim))
+            m.append(np.array(
+                feature["masks"][si: si + self.max_len]).reshape(1, -1, self.act_dim))
             r.append(np.array(feature["rewards"]
                      [si: si + self.max_len]).reshape(1, -1, 1))
 
@@ -90,6 +92,11 @@ class DecisionTransformerGymDataCollator:
                  * -10.0, a[-1]],
                 axis=1,
             )
+            m[-1] = np.concatenate(
+                [np.ones((1, self.max_len - tlen, self.act_dim))
+                 * -10.0, m[-1]],
+                axis=1,
+            )
             r[-1] = np.concatenate([np.zeros((1,
                                    self.max_len - tlen, 1)), r[-1]], axis=1)
             d[-1] = np.concatenate([np.ones((1, self.max_len - tlen))
@@ -103,6 +110,7 @@ class DecisionTransformerGymDataCollator:
 
         s = torch.from_numpy(np.concatenate(s, axis=0)).float()
         a = torch.from_numpy(np.concatenate(a, axis=0)).float()
+        m = torch.from_numpy(np.concatenate(m, axis=0)).float()
         r = torch.from_numpy(np.concatenate(r, axis=0)).float()
         d = torch.from_numpy(np.concatenate(d, axis=0))
         rtg = torch.from_numpy(np.concatenate(rtg, axis=0)).float()
@@ -112,6 +120,7 @@ class DecisionTransformerGymDataCollator:
         return {
             "states": s,
             "actions": a,
+            "invalid_action_masks": m,
             "rewards": r,
             "returns_to_go": rtg,
             "timesteps": timesteps,
