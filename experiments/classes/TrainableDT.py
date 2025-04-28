@@ -59,7 +59,6 @@ class TrainableDT(DecisionTransformerModel):
 
         loss = F.cross_entropy(probs, action_targets)
 
-        print(loss)
         return {"loss": loss}
 
     def original_forward(self, **kwargs):
@@ -69,7 +68,7 @@ class TrainableDT(DecisionTransformerModel):
         action_preds = output[1]
         act_dim = kwargs["actions"].shape[2]
         mask = kwargs["invalid_action_mask"]
-        mask.reshape(-1, act_dim)
+        mask = mask.reshape(-1, 78)
         mask[mask == 0] = -9e8
         action_pred = action_preds.reshape(-1, act_dim)[-1]  # next action
         action_pred = action_pred.reshape(-1, 78)  # 78 action encodings

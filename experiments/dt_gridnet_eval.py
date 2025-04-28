@@ -200,7 +200,7 @@ def decode_action(action: torch.Tensor):
 if __name__ == "__main__":
     args = parse_args()
 
-    from ppo_gridnet import Agent, MicroRTSStatsRecorder
+    from old_ppo_gridnet import Agent, MicroRTSStatsRecorder
 
     from gym_microrts.envs.vec_env import MicroRTSGridModeVecEnv
 
