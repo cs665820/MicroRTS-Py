@@ -11,7 +11,7 @@ from distutils.util import strtobool
 import numpy as np
 import torch
 from classes.DataCollector import DecisionTransformerGymDataCollator
-from datasets import load_dataset 
+from datasets import load_dataset
 from dt_gridnet_eval import decode_action, decode_obs, get_action
 from stable_baselines3.common.vec_env import VecMonitor, VecVideoRecorder
 
@@ -37,8 +37,8 @@ def parse_args():
         help='if toggled, `torch.backends.cudnn.deterministic=False`')
     parser.add_argument('--cuda', type=lambda x: bool(strtobool(x)), default=True, nargs='?', const=True,
         help='if toggled, cuda will not be enabled by default')
-    parser.add_argument('--capture-video', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=False,
-        help='whether to capture videos of the agent performances (check out `videos` folder)')
+    parser.add_argument('--capture-video', action='store_true', default=False,
+                         help='if toggled, the video of the tournament will be captured')
 
     # Algorithm specific arguments
     parser.add_argument(
@@ -215,7 +215,7 @@ if __name__ == "__main__":
                 envs = VecVideoRecorder(
                     envs, 
                     f"videos/{exp_name}/{player1_name}-{player2_name}",
-                    record_video_trigger=lambda x: x == 0,
+                    record_video_trigger=lambda x: x == 1,
                     video_length=max_ep_length,
                 )
 
