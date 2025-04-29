@@ -1,0 +1,12 @@
+# .pt path, module_name, class_name
+ai agentP
+ai lightari
+ai myValor
+ai coacAI
+ai workerRushAI
+ai randomAI
+agent kaedenagent.pt resnet_gridnet QuadconeAgent
+agent ZayRB.pt a2c2_gridnet Agent
+agent shineagent.pt reinforce_gridnet Agent
+agent Ye_final.pt ppo_gridnet Agent
+dt dt-bot-v2

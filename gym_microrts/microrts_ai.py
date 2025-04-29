@@ -55,6 +55,18 @@ def PORangedRush(utt):
 # Competition AIs
 
 
+def zayNMCTS(utt):
+    from ZayNMCTS import ZayNMCTS
+
+    return ZayNMCTS(utt)
+
+
+def lightari(utt):
+    from lightari import lightari
+
+    return lightari(utt)
+
+
 def myValor(utt):
     from ai.coac import MyValorAI
 
